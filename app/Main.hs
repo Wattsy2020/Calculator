@@ -8,16 +8,17 @@ interactLines f = do
   putStrLn $ f input
   interactLines f
 
-showResult :: (Show a) => Either ParseError a -> String
+showResult :: (Show a) => Either ParseError (Either EvaluationError a) -> String
 showResult result = case result of
   Left errorReason -> show errorReason
-  Right answer -> show answer
+  Right (Left errorReason) -> show errorReason
+  Right (Right answer) -> show answer
 
 calculatorMain :: IO ()
 calculatorMain = do
   putStrLn "Welcome to the Calculator!"
   putStrLn "Enter an expression to calculate the answer:"
-  interactLines (showResult . (eval :: String -> Either ParseError Integer))
+  interactLines (showResult . (eval :: String -> Either ParseError (Either EvaluationError Double)))
 
 main :: IO ()
 main = calculatorMain

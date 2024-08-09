@@ -10,6 +10,7 @@ module NaturalCalculator
     serializeExpression,
     lexExpression,
     ParseError,
+    EvaluationError (..),
     Op (..),
     Expression (..),
     Token,
@@ -25,18 +26,24 @@ data ParseError
   | EmptyExpression
   deriving (Show, Eq)
 
--- lexer, convert expression into tokens
-data Op
-  = Plus
-  | Multiply
-  | Minus
+data EvaluationError
+  = DivisionByZero
   deriving (Show, Eq)
 
-data Token a
-  = Digit a
+-- lexer, convert expression into tokens
+data Op
+  = Add
+  | Multiply
+  | Subtract
+  | Divide
+  deriving (Show, Eq)
+
+data Token
+  = Digit Int
   | Operator Op
   | OpenParen
   | CloseParen
+  | DecimalPoint
   deriving (Show, Eq)
 
 data Expression a
@@ -44,37 +51,64 @@ data Expression a
   | Expression (Expression a) Op (Expression a)
   deriving (Show, Eq)
 
-readDigit' :: (Num a) => Char -> Either ParseError a
+readDigit' :: Char -> Either ParseError Int
 readDigit' char = case readDigit char of
   Nothing -> Left (InvalidDigit char)
   Just digit -> Right digit
 
-lexChar :: (Num a) => Char -> Either ParseError (Token a)
+lexChar :: Char -> Either ParseError Token
 lexChar '(' = Right OpenParen
 lexChar ')' = Right CloseParen
-lexChar '+' = Right (Operator Plus)
+lexChar '.' = Right DecimalPoint
+lexChar '+' = Right (Operator Add)
 lexChar '*' = Right (Operator Multiply)
-lexChar '-' = Right (Operator Minus)
+lexChar '-' = Right (Operator Subtract)
+lexChar '/' = Right (Operator Divide)
 lexChar other = fmap Digit (readDigit' other)
 
-lexExpression :: (Num a) => String -> Either ParseError [Token a]
+lexExpression :: String -> Either ParseError [Token]
 lexExpression = mapM lexChar . filter (/= ' ')
 
 -- parse into abstract syntax tree
 data ContinueInstruction = Continue | Stop
 
+hasHighPrecedence :: Op -> Bool
+hasHighPrecedence Multiply = True
+hasHighPrecedence Divide = True
+hasHighPrecedence Add = False
+hasHighPrecedence Subtract = False
+
+isNumericToken :: Token -> Bool
+isNumericToken (Digit _) = True
+isNumericToken DecimalPoint = True
+isNumericToken _ = False
+
+-- convert operation to string
+serializeOp :: Op -> String
+serializeOp Add = "+"
+serializeOp Subtract = "-"
+serializeOp Multiply = "*"
+serializeOp Divide = "/"
+
+serializeToken :: Token -> String
+serializeToken (Digit digit) = show digit
+serializeToken DecimalPoint = "."
+serializeToken (Operator op) = serializeOp op
+serializeToken OpenParen = "("
+serializeToken CloseParen = ")"
+
 -- combine all the starting tokens that are digits into a number, also returning remaining tokens
-parseDigits :: (Num a) => a -> [Token a] -> (a, [Token a])
-parseDigits prev ((Digit value) : remaining) = parseDigits (10 * prev + value) remaining
-parseDigits prev remaining = (prev, remaining)
+parseDigits :: (Read a, Fractional a) => [Token] -> (a, [Token])
+parseDigits tokens = let (numericTokens, remaining) = span isNumericToken tokens in
+  (read $ concatMap serializeToken numericTokens, remaining)
 
 -- stop parsing the next tokens when encountering a stop instruction (started by the close bracket)
-handleContinuation :: (Num a) => Expression a -> [Token a] -> ContinueInstruction -> Either ParseError (Expression a, [Token a], ContinueInstruction)
+handleContinuation :: (Read a, Fractional a) => Expression a -> [Token] -> ContinueInstruction -> Either ParseError (Expression a, [Token], ContinueInstruction)
 handleContinuation newExpr remainingTokens continueInstruction = case continueInstruction of
   Stop -> Right (newExpr, remainingTokens, Stop) -- pass the stop instruction until getting to the open paren which will realise we're going out of a sub-xpression
   Continue -> parseExpression' (Just newExpr) False remainingTokens
 
-parseBrackets :: (Num a) => Maybe (Expression a) -> Bool -> [Token a] -> Either ParseError (Expression a, [Token a], ContinueInstruction)
+parseBrackets :: (Read a, Fractional a) => Maybe (Expression a) -> Bool -> [Token] -> Either ParseError (Expression a, [Token], ContinueInstruction)
 parseBrackets expr _ remaining = do
   (newExpr, remainingTokens, continueInstruction) <- parseExpression' expr False remaining
   case continueInstruction of
@@ -87,21 +121,20 @@ parseBrackets expr _ remaining = do
 
 -- parse an expression, given the expression up until this point
 -- returns the remaining tokens after parsing the expression
--- todo: Make this return an `Either`
-parseExpression' :: (Num a) => Maybe (Expression a) -> Bool -> [Token a] -> Either ParseError (Expression a, [Token a], ContinueInstruction)
+parseExpression' :: (Read a, Fractional a) => Maybe (Expression a) -> Bool -> [Token] -> Either ParseError (Expression a, [Token], ContinueInstruction)
 parseExpression' (Just expr) _ [] = Right (expr, [], Stop)
-parseExpression' Nothing highPrecedence (Digit value : remaining) =
-  let (number, remainingTokens) = parseDigits value remaining
+parseExpression' Nothing highPrecedence remaining@(Digit _ : _) =
+  let (number, remainingTokens) = parseDigits remaining
    in if highPrecedence -- if highPrecedence then return immediately and let the expression with higher precedence evaluate the remaining tokens
         then Right (Value number, remainingTokens, Continue)
         else parseExpression' (Just $ Value number) highPrecedence remainingTokens
 parseExpression' (Just leftExpr) _ (Operator op : remaining) = do
-  (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing (op == Multiply) remaining
+  (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing (hasHighPrecedence op) remaining
   let operatorExpr = Expression leftExpr op rightExpr
    in handleContinuation operatorExpr remainingTokens continueInstruction
-parseExpression' Nothing _ (Operator Minus : remaining) = do
+parseExpression' Nothing _ (Operator Subtract : remaining) = do
   (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing True remaining
-  let operatorExpr = Expression (Value 0) Minus rightExpr
+  let operatorExpr = Expression (Value 0) Subtract rightExpr
    in handleContinuation operatorExpr remainingTokens continueInstruction
 -- reset precedence inside brackets, it's a separate operation
 -- also, tell the consumer of this bracketed expression to continue parsing, after the close paren told the inner sub-expression to stop parsing
@@ -111,44 +144,43 @@ parseExpression' (Just expr) _ (CloseParen : remaining) = Right (expr, remaining
 parseExpression' Nothing _ (Operator _ : _) = Left (InvalidExpression "no previous expression for the operator")
 parseExpression' (Just _) _ (Digit _ : _) = Left (InvalidExpression "digit shouldn't have a previous expression")
 parseExpression' (Just _) _ (OpenParen : _) = Left (InvalidExpression "open parenthesis shouldn't have a previous expression")
+parseExpression' _ _ (DecimalPoint: _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
 parseExpression' Nothing _ (CloseParen : _) = Left UnmatchingParenthesis
 parseExpression' Nothing _ [] = Left EmptyExpression
 
-handleParseExpression :: (Num a) => (Expression a, [Token a], ContinueInstruction) -> Either ParseError (Expression a)
+handleParseExpression :: (Read a, Fractional a) => (Expression a, [Token], ContinueInstruction) -> Either ParseError (Expression a)
 handleParseExpression result = case result of
   (expr, [], _) -> Right expr
   -- handle when there are leftover tokens, which can happen if there is a top level bracket like (1)+1
   (expr, remaining, _) -> parseExpression' (Just expr) False remaining >>= handleParseExpression
 
-parseExpression :: (Num a) => [Token a] -> Either ParseError (Expression a)
+parseExpression :: (Read a, Fractional a) => [Token] -> Either ParseError (Expression a)
 parseExpression = (>>= handleParseExpression) . parseExpression' Nothing False
 
-readExpression :: (Num a) => String -> Either ParseError (Expression a)
+readExpression :: (Read a, Fractional a) => String -> Either ParseError (Expression a)
 readExpression = (>>= parseExpression) . lexExpression
 
 -- evaluate an operation on its arguments
-evalOp :: (Num a) => Op -> a -> a -> a
-evalOp Plus = (+)
+evalOp :: (Fractional a) => Op -> a -> a -> a
+evalOp Add = (+)
 evalOp Multiply = (*)
-evalOp Minus = (-)
+evalOp Subtract = (-)
+evalOp Divide = (/)
 
 -- evaluate an expression
-evalExpression :: (Num a) => Expression a -> a
-evalExpression (Value result) = result
-evalExpression (Expression left op right) = evalOp op (evalExpression left) (evalExpression right)
-
--- convert operation to string
-serializeOp :: Op -> String
-serializeOp Plus = "+"
-serializeOp Minus = "-"
-serializeOp Multiply = "*"
+evalExpression :: (Eq a, Fractional a) => Expression a -> Either EvaluationError a
+evalExpression (Value result) = Right result
+evalExpression (Expression left Divide right) = do
+  rightResult <- evalExpression right
+  if rightResult == 0 then Left DivisionByZero else flip (evalOp Divide) rightResult <$> evalExpression left
+evalExpression (Expression left op right) = evalOp op <$> evalExpression left <*> evalExpression right
 
 -- convert expression to string
 serializeExpression :: (Show a) => Expression a -> String
 serializeExpression (Value result) = show result
-serializeExpression (Expression leftExpr op rightExpr) = 
+serializeExpression (Expression leftExpr op rightExpr) =
   "(" <> serializeExpression leftExpr <> ")" <> serializeOp op <> "(" <> serializeExpression rightExpr <> ")"
 
 -- parse and evaluate a string expression
-eval :: (Num a) => String -> Either ParseError a
+eval :: (Read a, Eq a, Fractional a) => String -> Either ParseError (Either EvaluationError a)
 eval = fmap evalExpression . readExpression
