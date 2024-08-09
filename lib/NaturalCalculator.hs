@@ -9,7 +9,7 @@ module NaturalCalculator
     readExpression,
     serializeExpression,
     lexExpression,
-    ParseError,
+    ParseError(..),
     EvaluationError (..),
     Op (..),
     Expression (..),
@@ -19,6 +19,7 @@ where
 
 import StringUtils (readDigit)
 import FunctorUtils ( ($>) )
+import Text.Read (readMaybe)
 
 data ParseError
   = InvalidDigit Char
@@ -107,16 +108,16 @@ readInteger prev ((Digit value) : remaining) = readInteger (10 * prev + value) r
 readInteger prev remaining = (prev, remaining)
 
 -- combine all the starting tokens that are digits into a number, also returning remaining tokens
-parseDigits :: forall a. (Read a) => [Token] -> (a, [Token])
+parseDigits :: forall a. (Read a) => [Token] -> (Maybe a, [Token])
 parseDigits tokens =
   let (numericTokens, remaining) = span isNumericToken tokens
       mantissaStr = concatMap serializeToken numericTokens in
   case remaining of
     (Exponent : Operator Subtract : (Digit value) : remaining2) -> let (exponent, remaining3) = readInteger value remaining2 in
-      (read (mantissaStr ++ "e-" ++ show exponent), remaining3)
+      (readMaybe (mantissaStr ++ "e-" ++ show exponent), remaining3)
     (Exponent : Operator Add : (Digit value) : remaining2) -> let (exponent, remaining3) = readInteger value remaining2 in
-      (read (mantissaStr ++ "e+" ++ show exponent), remaining3)
-    _ -> (read mantissaStr, remaining)
+      (readMaybe (mantissaStr ++ "e+" ++ show exponent), remaining3)
+    _ -> (readMaybe mantissaStr, remaining)
 
 -- stop parsing the next tokens when encountering a stop instruction (started by the close bracket)
 handleContinuation :: (Read a, Fractional a) => Expression a -> [Token] -> ContinueInstruction -> Either ParseError (Expression a, [Token], ContinueInstruction)
@@ -140,10 +141,11 @@ parseBrackets expr _ remaining = do
 parseExpression' :: (Read a, Fractional a) => Maybe (Expression a) -> Bool -> [Token] -> Either ParseError (Expression a, [Token], ContinueInstruction)
 parseExpression' (Just expr) _ [] = Right (expr, [], Stop)
 parseExpression' Nothing highPrecedence remaining@(Digit _ : _) =
-  let (number, remainingTokens) = parseDigits remaining
-   in if highPrecedence -- if highPrecedence then return immediately and let the expression with higher precedence evaluate the remaining tokens
+  case parseDigits remaining of
+    (Just number, remainingTokens) -> if highPrecedence -- if highPrecedence then return immediately and let the expression with higher precedence evaluate the remaining tokens
         then Right (Value number, remainingTokens, Continue)
         else parseExpression' (Just $ Value number) highPrecedence remainingTokens
+    (Nothing, _) -> Left $ InvalidExpression "Number was incorrectly formatted"
 parseExpression' (Just leftExpr) _ (Operator op : remaining) = do
   (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing (hasHighPrecedence op) remaining
   let operatorExpr = Expression leftExpr op rightExpr

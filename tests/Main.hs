@@ -90,6 +90,8 @@ main :: IO ()
 main = hspec $ do
   describe "Calculator" $ do
     it "Passes Manual Test cases" $ mapMaybe getFailedTest testCases `shouldBe` []
+
+    it "Handles incorrectly formatted numbers" $ readExpression "1.0.0" `shouldBe` Left (InvalidExpression "Number was incorrectly formatted")
     
     it "Passes Property Test cases" $ property (prop_serializeroundtrip :: Expression Double -> Bool)
 
