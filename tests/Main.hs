@@ -9,6 +9,7 @@ import Data.Function (on)
 import Data.Foldable (toList)
 import Data.Decimal
 import Data.Word
+import FunctorUtils ( ($>) )
 
 testCases :: [(String, Double)]
 testCases =
@@ -33,9 +34,6 @@ getFailedTest (exprStr, result)
   | testPasses (exprStr, result) = Nothing
   | otherwise = Just (show $ fmap parseExpression (lexExpression exprStr :: Either ParseError [Token]), result)
 
-combineExpression :: Op -> Either a (Expression b) -> Either a (Expression b) -> [Expression b]
-combineExpression op leftExpr rightExpr = toList $ Expression <$> leftExpr <*> Right op <*> rightExpr
-
 instance Arbitrary Op where
   arbitrary :: Gen Op
   arbitrary = elements [ Add, Subtract, Multiply, Divide ]
@@ -48,13 +46,11 @@ instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
 
   shrink :: Fractional a => Expression a -> [Expression a]
   shrink (Value val) = map Value $ shrink val
-  shrink expr@(Expression (Value leftVal) op (Value rightVal)) = case evalExpression expr of
-    Left _ -> []
-    Right result -> [Value result]
+  shrink expr@(Expression (Value leftVal) op (Value rightVal)) = toList $ Value <$> evalExpression expr
   shrink expr@(Expression leftExpr op rightVal@(Value _)) = [
     leftExpr,
     rightVal]
-    ++ combineExpression op evalLeft (Right rightVal)
+    ++ toList (Expression <$> evalLeft $> op $> rightVal)
     ++ map (\shrunkExpr -> Expression shrunkExpr op rightVal) shrunkLeft
     where
       evalLeft = Value <$> evalExpression leftExpr
@@ -62,7 +58,7 @@ instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
   shrink expr@(Expression leftVal@(Value _) op rightExpr) = [
     leftVal,
     rightExpr]
-    ++ combineExpression op (Right leftVal) evalRight
+    ++ toList (Expression leftVal op <$> evalRight)
     ++ map (Expression leftVal op) shrunkRight
     where
       evalRight = Value <$> evalExpression rightExpr
@@ -70,9 +66,9 @@ instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
   shrink (Expression leftExpr op rightExpr) = [
       leftExpr, 
       rightExpr]
-      ++ combineExpression op evalLeft evalRight
-      ++ combineExpression op evalLeft (Right rightExpr)
-      ++ combineExpression op (Right leftExpr) evalRight
+      ++ toList (Expression <$> evalLeft $> op <*> evalRight)
+      ++ toList (Expression <$> evalLeft $> op $> rightExpr)
+      ++ toList (Expression leftExpr op <$> evalRight)
       ++ map (\shrunkExpr -> Expression shrunkExpr op rightExpr) shrunkLeft
       ++ map (Expression leftExpr op) shrunkRight
     where

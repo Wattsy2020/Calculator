@@ -18,6 +18,7 @@ module NaturalCalculator
 where
 
 import StringUtils (readDigit)
+import FunctorUtils ( ($>) )
 
 data ParseError
   = InvalidDigit Char
@@ -188,7 +189,7 @@ evalExpression :: (Eq a, Fractional a) => Expression a -> Either EvaluationError
 evalExpression (Value result) = Right result
 evalExpression (Expression left Divide right) = do
   rightResult <- evalExpression right
-  if rightResult == 0 then Left DivisionByZero else flip (evalOp Divide) rightResult <$> evalExpression left
+  if rightResult == 0 then Left DivisionByZero else evalOp Divide <$> evalExpression left $> rightResult
 evalExpression (Expression left op right) = evalOp op <$> evalExpression left <*> evalExpression right
 
 -- convert expression to string
