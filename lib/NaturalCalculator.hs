@@ -44,6 +44,7 @@ data Token
   | OpenParen
   | CloseParen
   | DecimalPoint
+  | Exponent
   deriving (Show, Eq)
 
 data Expression a
@@ -60,6 +61,7 @@ lexChar :: Char -> Either ParseError Token
 lexChar '(' = Right OpenParen
 lexChar ')' = Right CloseParen
 lexChar '.' = Right DecimalPoint
+lexChar 'e' = Right Exponent
 lexChar '+' = Right (Operator Add)
 lexChar '*' = Right (Operator Multiply)
 lexChar '-' = Right (Operator Subtract)
@@ -96,11 +98,24 @@ serializeToken DecimalPoint = "."
 serializeToken (Operator op) = serializeOp op
 serializeToken OpenParen = "("
 serializeToken CloseParen = ")"
+serializeToken Exponent = "e"
+
+-- read an integer, returning the remaining tokens
+readInteger :: Int -> [Token] -> (Int, [Token])
+readInteger prev ((Digit value) : remaining) = readInteger (10 * prev + value) remaining
+readInteger prev remaining = (prev, remaining)
 
 -- combine all the starting tokens that are digits into a number, also returning remaining tokens
-parseDigits :: (Read a, Fractional a) => [Token] -> (a, [Token])
-parseDigits tokens = let (numericTokens, remaining) = span isNumericToken tokens in
-  (read $ concatMap serializeToken numericTokens, remaining)
+parseDigits :: forall a. (Read a) => [Token] -> (a, [Token])
+parseDigits tokens =
+  let (numericTokens, remaining) = span isNumericToken tokens
+      mantissaStr = concatMap serializeToken numericTokens in
+  case remaining of
+    (Exponent : Operator Subtract : (Digit value) : remaining2) -> let (exponent, remaining3) = readInteger value remaining2 in
+      (read (mantissaStr ++ "e-" ++ show exponent), remaining3)
+    (Exponent : Operator Add : (Digit value) : remaining2) -> let (exponent, remaining3) = readInteger value remaining2 in
+      (read (mantissaStr ++ "e+" ++ show exponent), remaining3)
+    _ -> (read mantissaStr, remaining)
 
 -- stop parsing the next tokens when encountering a stop instruction (started by the close bracket)
 handleContinuation :: (Read a, Fractional a) => Expression a -> [Token] -> ContinueInstruction -> Either ParseError (Expression a, [Token], ContinueInstruction)
