@@ -1,0 +1,1 @@
+A calculator written in Haskell. To build and run use GHCup to install Haskell and Cabal, then use `cabal run` in the root directory of this repository
