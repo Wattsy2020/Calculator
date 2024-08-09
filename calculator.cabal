@@ -78,7 +78,7 @@ executable calculator
 library calculator-lib
     exposed-modules: NaturalCalculator
     other-modules:
-        Calculator,
+        PolishNotationCalculator,
         StringUtils
     hs-source-dirs: lib
     build-depends: base ^>=4.17.2.1

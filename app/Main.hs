@@ -5,7 +5,7 @@ import NaturalCalculator
 interactLines :: (String -> String) -> IO ()
 interactLines f = do
   input <- getLine
-  print $ f input
+  putStrLn $ f input
   interactLines f
 
 showResult :: (Show a) => Either ParseError a -> String
