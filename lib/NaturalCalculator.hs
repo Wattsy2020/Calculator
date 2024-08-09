@@ -159,7 +159,8 @@ parseExpression' (Just expr) _ (CloseParen : remaining) = Right (expr, remaining
 parseExpression' Nothing _ (Operator _ : _) = Left (InvalidExpression "no previous expression for the operator")
 parseExpression' (Just _) _ (Digit _ : _) = Left (InvalidExpression "digit shouldn't have a previous expression")
 parseExpression' (Just _) _ (OpenParen : _) = Left (InvalidExpression "open parenthesis shouldn't have a previous expression")
-parseExpression' _ _ (DecimalPoint: _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
+parseExpression' _ _ (DecimalPoint : _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
+parseExpression' _ _ (Exponent : _) = Left (InvalidExpression "exponent wasn't preceeded by a number")
 parseExpression' Nothing _ (CloseParen : _) = Left UnmatchingParenthesis
 parseExpression' Nothing _ [] = Left EmptyExpression
 

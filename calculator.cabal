@@ -67,6 +67,7 @@ executable calculator
     -- Other library packages from which modules are imported.
     build-depends:
         base ^>=4.17.2.1,
+        Decimal ^>=0.5.2,
         calculator-lib
 
     -- Directories containing source files.
@@ -91,6 +92,7 @@ test-suite calculator-tests
         base ^>=4.17.2.1,
         hspec ^>=2.11.9,
         QuickCheck ^>=2.15.0.1,
+        Decimal ^>=0.5.2,
         calculator-lib
     hs-source-dirs: tests
     default-language: GHC2021

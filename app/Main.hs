@@ -1,6 +1,7 @@
 module Main where
 
 import NaturalCalculator
+import Data.Decimal
 
 interactLines :: (String -> String) -> IO ()
 interactLines f = do
@@ -18,7 +19,7 @@ calculatorMain :: IO ()
 calculatorMain = do
   putStrLn "Welcome to the Calculator!"
   putStrLn "Enter an expression to calculate the answer:"
-  interactLines (showResult . (eval :: String -> Either ParseError (Either EvaluationError Double)))
+  interactLines (showResult . (eval :: String -> Either ParseError (Either EvaluationError Decimal)))
 
 main :: IO ()
 main = calculatorMain

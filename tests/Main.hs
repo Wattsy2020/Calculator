@@ -7,6 +7,8 @@ import Test.Hspec
 import Test.QuickCheck
 import Data.Function (on)
 import Data.Foldable (toList)
+import Data.Decimal
+import Data.Word
 
 testCases :: [(String, Double)]
 testCases =
@@ -79,6 +81,10 @@ instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
       shrunkLeft = shrink leftExpr
       shrunkRight = shrink rightExpr
 
+instance (Integral a) => Arbitrary (DecimalRaw a) where
+  arbitrary :: Gen (DecimalRaw a)
+  arbitrary = realFracToDecimal <$> (arbitrary :: Gen Word8) <*> (arbitrary :: Gen Double)
+
 prop_serializeroundtrip :: (Show a, Read a, Eq a, Fractional a) => Expression a -> Bool
 prop_serializeroundtrip expr = case readExpression $ serializeExpression expr of
   Left _ -> False
@@ -90,3 +96,5 @@ main = hspec $ do
     it "Passes Manual Test cases" $ mapMaybe getFailedTest testCases `shouldBe` []
     
     it "Passes Property Test cases" $ property (prop_serializeroundtrip :: Expression Double -> Bool)
+
+    it "Can Process Decimals" $ property (prop_serializeroundtrip :: Expression Decimal -> Bool)
