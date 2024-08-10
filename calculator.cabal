@@ -61,13 +61,13 @@ executable calculator
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+    other-modules: Console
 
     -- Other library packages from which modules are imported.
     build-depends:
         base ^>=4.17.2.1,
         Decimal ^>=0.5.2,
+        ansi-terminal ^>=0.5.5,
         calculator-lib
 
     -- Directories containing source files.

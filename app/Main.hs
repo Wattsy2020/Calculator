@@ -2,12 +2,7 @@ module Main where
 
 import NaturalCalculator
 import Data.Decimal
-
-interactLines :: (String -> String) -> IO ()
-interactLines f = do
-  input <- getLine
-  putStrLn $ f input
-  interactLines f
+import Console
 
 showResult :: (Show a) => Either ParseError (Either EvaluationError a) -> String
 showResult result = case result of
