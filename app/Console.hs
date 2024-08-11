@@ -36,13 +36,21 @@ getKey = do
 resetLine :: IO ()
 resetLine = clearLine >> setCursorColumn 0
 
+-- reset the line to a string
+resetLineTo :: String -> IO ()
+resetLineTo string = resetLine >> putStr string
+
+-- show an input and continue the input loop
+showInput :: (String -> String) -> String -> [String] -> Int -> IO ()
+showInput f input previousInputs inputIdx = do 
+  resetLineTo $ reverse input
+  interactLines' f input previousInputs inputIdx
+
+-- show a previous input given the idx of that input
 showInputIdx :: (String -> String) -> String -> [String] -> Int -> Int -> IO ()
 showInputIdx f input previousInputs inputIdx prevIdx = case previousInputs !? inputIdx of
-  Nothing -> interactLines' f input previousInputs prevIdx
-  Just selectedInput -> do
-    resetLine
-    putStr $ reverse selectedInput
-    interactLines' f selectedInput previousInputs inputIdx
+  Nothing -> showInput f input previousInputs prevIdx
+  Just selectedInput -> showInput f selectedInput previousInputs inputIdx
 
 interactLines' :: (String -> String) -> String -> [String] -> Int -> IO ()
 interactLines' f input previousInputs inputIdx = do
@@ -50,10 +58,8 @@ interactLines' f input previousInputs inputIdx = do
   case key of
     UpArrow -> showInputIdx f input previousInputs (inputIdx + 1) inputIdx
     DownArrow -> showInputIdx f input previousInputs (inputIdx - 1) inputIdx
-    Delete -> let newInput = drop 1 input in do 
-      resetLine
-      putStr $ reverse newInput
-      interactLines' f newInput previousInputs inputIdx
+    Delete -> let newInput = drop 1 input in 
+      showInput f newInput previousInputs inputIdx
     Char '\n' -> do
       putStrLn $ f $ reverse input
       interactLines' f "" (input : previousInputs) (-1)
