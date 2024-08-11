@@ -4,15 +4,6 @@ import Expression
 import Text.Read (readMaybe)
 import Control.Monad ((<=<))
 
--- parse into abstract syntax tree
-data ContinueInstruction = Continue | Stop
-
-hasHighPrecedence :: Op -> Bool
-hasHighPrecedence Multiply = True
-hasHighPrecedence Divide = True
-hasHighPrecedence Add = False
-hasHighPrecedence Subtract = False
-
 isNumericToken :: Token -> Bool
 isNumericToken (Digit _) = True
 isNumericToken DecimalPoint = True
@@ -35,62 +26,56 @@ parseDigits tokens =
       (readMaybe (mantissaStr ++ "e+" ++ show exponent), remaining3)
     _ -> (readMaybe mantissaStr, remaining)
 
--- stop parsing the next tokens when encountering a stop instruction (started by the close bracket)
-handleContinuation :: (Read a, Fractional a) => Expression a -> [Token] -> ContinueInstruction -> Either ParseError (Expression a, [Token], ContinueInstruction)
-handleContinuation newExpr remainingTokens continueInstruction = case continueInstruction of
-  Stop -> Right (newExpr, remainingTokens, Stop) -- pass the stop instruction until getting to the open paren which will realise we're going out of a sub-xpression
-  Continue -> parseExpression' (Just newExpr) False remainingTokens
+-- precedence of an operator, high precedence operators must be evaluated before lower precedence operators
+precedence :: Op -> Int
+precedence Multiply = 1
+precedence Divide = 1
+precedence Add = 0
+precedence Subtract = 0
 
-parseBrackets :: (Read a, Fractional a) => Maybe (Expression a) -> Bool -> [Token] -> Either ParseError (Expression a, [Token], ContinueInstruction)
-parseBrackets expr _ remaining = do
-  (newExpr, remainingTokens, continueInstruction) <- parseExpression' expr False remaining
-  case continueInstruction of
-    Stop -> Right (newExpr, remainingTokens, Continue)
-    --we might have already exited from inner brackets, and need to continue parsing the next tokens inside this bracket pair
-    -- e.g. consider evaluating 8*((-3)+5)
-    -- we also need to continue handling exits from further inner brackets, so we recurse
-    -- e.g. consider evaluating "0-(((3)+(1))-8)"
-    Continue -> parseBrackets (Just newExpr) False remainingTokens
+-- note all operators currently are left associative
+-- e.g. 1 - 3 + 2 = (1 - 3) + 2, 4 / 3 / 2 = (4/3)/2
+isLeftAssociative :: Op -> Bool
+isLeftAssociative = const True
 
--- parse an expression, given the expression up until this point
+-- apply all the operators to the expression stack, returning the new expression stack
+evaluateStacks :: [Expression a] -> [Op] -> [Expression a]
+evaluateStacks exprs [] = exprs
+evaluateStacks (expr1 : expr2: remainingExprs) (op : remainingOps) = 
+  evaluateStacks (Expression expr2 op expr1 : remainingExprs) remainingOps
+evaluateStacks [] ops@(_ : _) = error $ "left over operators: " ++ show ops
+
+-- parse an expression using the shunting yard algorithm
 -- returns the remaining tokens after parsing the expression
-parseExpression' :: (Read a, Fractional a) => Maybe (Expression a) -> Bool -> [Token] -> Either ParseError (Expression a, [Token], ContinueInstruction)
-parseExpression' (Just expr) _ [] = Right (expr, [], Stop)
-parseExpression' Nothing highPrecedence remaining@(Digit _ : _) =
+parseExpression' :: (Read a, Num a) => [Expression a] -> [Op] -> [Token] -> Either ParseError (Expression a, [Token])
+parseExpression' exprs ops [] = Right (head $ evaluateStacks exprs ops, [])
+parseExpression' exprs ops remaining@(Digit _ : _) =
   case parseDigits remaining of
-    (Just number, remainingTokens) -> if highPrecedence -- if highPrecedence then return immediately and let the expression with higher precedence evaluate the remaining tokens
-        then Right (Value number, remainingTokens, Continue)
-        else parseExpression' (Just $ Value number) highPrecedence remainingTokens
+    (Just number, remainingTokens) -> parseExpression' (Value number : exprs) ops remainingTokens
     (Nothing, _) -> Left $ InvalidExpression "Number was incorrectly formatted"
-parseExpression' (Just leftExpr) _ (Operator op : remaining) = do
-  (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing (hasHighPrecedence op) remaining
-  let operatorExpr = Expression leftExpr op rightExpr
-   in handleContinuation operatorExpr remainingTokens continueInstruction
-parseExpression' Nothing _ (Operator Subtract : remaining) = do
-  (rightExpr, remainingTokens, continueInstruction) <- parseExpression' Nothing True remaining
-  let operatorExpr = Expression (Value 0) Subtract rightExpr
-   in handleContinuation operatorExpr remainingTokens continueInstruction
--- reset precedence inside brackets, it's a separate operation
--- also, tell the consumer of this bracketed expression to continue parsing, after the close paren told the inner sub-expression to stop parsing
-parseExpression' Nothing _ (OpenParen : remaining) = parseBrackets Nothing False remaining
-parseExpression' (Just expr) _ (CloseParen : remaining) = Right (expr, remaining, Stop)
+-- treat (-x) as (0 - x)
+parseExpression' [] [] (Operator Subtract : remaining) = parseExpression' [Value 0] [Subtract] remaining
+parseExpression' exprs@(expr: _) [] (Operator op : remaining) = parseExpression' exprs [op] remaining
+parseExpression' exprs ops (Operator op : remainingTokens) = 
+  let isLeftAssociative' = isLeftAssociative op
+      precNew = precedence op
+      (opsToEvaluate, remainingOps) = span (\op -> precNew < precedence op || (isLeftAssociative' && precNew == precedence op)) ops
+   in parseExpression' (evaluateStacks exprs opsToEvaluate) (op : remainingOps) remainingTokens
+-- recursively parse bracketed expressions
+parseExpression' exprs ops (OpenParen : remaining) = do
+  (expression, remainingTokens) <- parseExpression' [] [] remaining
+  parseExpression' (expression : exprs) ops remainingTokens
+parseExpression' exprs ops (CloseParen : remaining) = Right (head $ evaluateStacks exprs ops, remaining)
 -- report incorrectly formed expressions
-parseExpression' Nothing _ (Operator _ : _) = Left (InvalidExpression "no previous expression for the operator")
-parseExpression' (Just _) _ (Digit _ : _) = Left (InvalidExpression "digit shouldn't have a previous expression")
-parseExpression' (Just _) _ (OpenParen : _) = Left (InvalidExpression "open parenthesis shouldn't have a previous expression")
-parseExpression' _ _ (DecimalPoint : _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
-parseExpression' _ _ (Exponent : _) = Left (InvalidExpression "exponent wasn't preceeded by a number")
-parseExpression' Nothing _ (CloseParen : _) = Left UnmatchingParenthesis
-parseExpression' Nothing _ [] = Left EmptyExpression
+--parseExpression' (Just _) _ (Digit _ : _) = Left (InvalidExpression "digit shouldn't have a previous expression")
+--parseExpression' (Just _) _ (OpenParen : _) = Left (InvalidExpression "open parenthesis shouldn't have a previous expression")
+--parseExpression' _ _ (DecimalPoint : _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
+--parseExpression' _ _ (Exponent : _) = Left (InvalidExpression "exponent wasn't preceeded by a number")
+--parseExpression' Nothing _ (CloseParen : _) = Left UnmatchingParenthesis
+--parseExpression' Nothing _ [] = Left EmptyExpression
 
-handleParseExpression :: (Read a, Fractional a) => (Expression a, [Token], ContinueInstruction) -> Either ParseError (Expression a)
-handleParseExpression result = case result of
-  (expr, [], _) -> Right expr
-  -- handle when there are leftover tokens, which can happen if there is a top level bracket like (1)+1
-  (expr, remaining, _) -> parseExpression' (Just expr) False remaining >>= handleParseExpression
+parseExpression :: (Read a, Num a) => [Token] -> Either ParseError (Expression a)
+parseExpression = (fst <$>) . parseExpression' [] []
 
-parseExpression :: (Read a, Fractional a) => [Token] -> Either ParseError (Expression a)
-parseExpression = handleParseExpression <=< parseExpression' Nothing False
-
-readExpression :: (Read a, Fractional a) => String -> Either ParseError (Expression a)
+readExpression :: (Read a, Num a) => String -> Either ParseError (Expression a)
 readExpression = parseExpression <=< lexExpression
