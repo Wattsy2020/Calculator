@@ -3,6 +3,7 @@ module Parser ( parseExpression, readExpression ) where
 import Expression
 import Text.Read (readMaybe)
 import Control.Monad ((<=<))
+import FunctorUtils (liftFirst, ($>))
 
 isNumericToken :: Token -> Bool
 isNumericToken (Digit _) = True
@@ -39,16 +40,20 @@ isLeftAssociative :: Op -> Bool
 isLeftAssociative = const True
 
 -- apply all the operators to the expression stack, returning the new expression stack
-evaluateStacks :: [Expression a] -> [Op] -> [Expression a]
-evaluateStacks exprs [] = exprs
+evaluateStacks :: [Expression a] -> [Op] -> Either ParseError [Expression a]
+evaluateStacks exprs [] = Right exprs
 evaluateStacks (expr1 : expr2: remainingExprs) (op : remainingOps) = 
   evaluateStacks (Expression expr2 op expr1 : remainingExprs) remainingOps
-evaluateStacks [] ops@(_ : _) = error $ "left over operators: " ++ show ops
+evaluateStacks _ (_ : _) = Left (InvalidExpression "operation wasn't preceeeded by a number")
+
+handleEvaluate :: [Expression a] -> [Op] -> [Token] -> Either ParseError (Expression a, [Token])
+handleEvaluate exprs ops remaining = liftFirst (head <$> evaluateStacks exprs ops, remaining)
 
 -- parse an expression using the shunting yard algorithm
 -- returns the remaining tokens after parsing the expression
 parseExpression' :: (Read a, Num a) => [Expression a] -> [Op] -> [Token] -> Either ParseError (Expression a, [Token])
-parseExpression' exprs ops [] = Right (head $ evaluateStacks exprs ops, [])
+parseExpression' [] _ [] = Left EmptyExpression
+parseExpression' exprs ops [] = handleEvaluate exprs ops []
 parseExpression' exprs ops remaining@(Digit _ : _) =
   case parseDigits remaining of
     (Just number, remainingTokens) -> parseExpression' (Value number : exprs) ops remainingTokens
@@ -56,23 +61,20 @@ parseExpression' exprs ops remaining@(Digit _ : _) =
 -- treat (-x) as (0 - x)
 parseExpression' [] [] (Operator Subtract : remaining) = parseExpression' [Value 0] [Subtract] remaining
 parseExpression' exprs@(expr: _) [] (Operator op : remaining) = parseExpression' exprs [op] remaining
+parseExpression' [] _ (Operator _ : _) = Left (InvalidExpression "operation wasn't preceeeded by a number")
 parseExpression' exprs ops (Operator op : remainingTokens) = 
   let isLeftAssociative' = isLeftAssociative op
       precNew = precedence op
       (opsToEvaluate, remainingOps) = span (\op -> precNew < precedence op || (isLeftAssociative' && precNew == precedence op)) ops
-   in parseExpression' (evaluateStacks exprs opsToEvaluate) (op : remainingOps) remainingTokens
+   in evaluateStacks exprs opsToEvaluate >>= \exprs -> parseExpression' exprs (op : remainingOps) remainingTokens
 -- recursively parse bracketed expressions
 parseExpression' exprs ops (OpenParen : remaining) = do
   (expression, remainingTokens) <- parseExpression' [] [] remaining
   parseExpression' (expression : exprs) ops remainingTokens
-parseExpression' exprs ops (CloseParen : remaining) = Right (head $ evaluateStacks exprs ops, remaining)
--- report incorrectly formed expressions
---parseExpression' (Just _) _ (Digit _ : _) = Left (InvalidExpression "digit shouldn't have a previous expression")
---parseExpression' (Just _) _ (OpenParen : _) = Left (InvalidExpression "open parenthesis shouldn't have a previous expression")
---parseExpression' _ _ (DecimalPoint : _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
---parseExpression' _ _ (Exponent : _) = Left (InvalidExpression "exponent wasn't preceeded by a number")
---parseExpression' Nothing _ (CloseParen : _) = Left UnmatchingParenthesis
---parseExpression' Nothing _ [] = Left EmptyExpression
+parseExpression' [] _ (CloseParen : _) = Left UnmatchingParenthesis
+parseExpression' exprs ops (CloseParen : remaining) = handleEvaluate exprs ops remaining
+parseExpression' _ _ (DecimalPoint : _) = Left (InvalidExpression "decimal point wasn't preceeded by a number")
+parseExpression' _ _ (Exponent : _) = Left (InvalidExpression "exponent wasn't preceeded by a number")
 
 parseExpression :: (Read a, Num a) => [Token] -> Either ParseError (Expression a)
 parseExpression = (fst <$>) . parseExpression' [] []
