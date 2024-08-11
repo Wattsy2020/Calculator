@@ -1,4 +1,4 @@
-module Console (interactLines) where 
+module Console (interactLines) where
 
 import System.Console.ANSI
 import System.IO

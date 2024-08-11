@@ -67,7 +67,7 @@ executable calculator
     build-depends:
         base ^>=4.17.2.1,
         Decimal ^>=0.5.2,
-        ansi-terminal ^>=0.5.5,
+        ansi-terminal ^>=1.1.1,
         calculator-lib
 
     -- Directories containing source files.
@@ -79,6 +79,9 @@ executable calculator
 library calculator-lib
     exposed-modules: 
         NaturalCalculator, 
+        Expression,
+        Parser,
+        Evaluator,
         FunctorUtils
     other-modules:
         PolishNotationCalculator,

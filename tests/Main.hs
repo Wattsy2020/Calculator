@@ -3,6 +3,9 @@ module Main where
 
 import Data.Maybe (mapMaybe)
 import NaturalCalculator
+import Expression
+import Parser
+import Evaluator
 import Test.Hspec
 import Test.QuickCheck
 import Data.Function (on)
@@ -24,6 +27,11 @@ testCases =
     ("(1)+1", 2),
     ("(11+3*(2+1-1)-2)+100", 115),
     ("-4*2", -8)
+    -- todo: fix these test cases
+    -- brackets should continue to parse numbers after them
+    --("1+(2)*3", 7),
+    -- subtraction and addition are both left associative, this should be parsed as (1-2)+3
+    --("1-2+3", 4)
   ]
 
 testPasses :: (String, Double) -> Bool
