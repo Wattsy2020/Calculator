@@ -68,6 +68,7 @@ executable calculator
         base ^>=4.17.2.1,
         Decimal ^>=0.5.2,
         ansi-terminal ^>=1.1.1,
+        containers ^>=0.6.7,
         calculator-lib
 
     -- Directories containing source files.
