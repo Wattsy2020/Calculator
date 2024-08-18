@@ -8,14 +8,15 @@ data EvaluationError
   deriving (Show, Eq)
 
 -- evaluate an operation on its arguments
-evalOp :: (Fractional a) => Op -> a -> a -> a
+evalOp :: (Floating a) => Op -> a -> a -> a
 evalOp Add = (+)
 evalOp Multiply = (*)
 evalOp Subtract = (-)
 evalOp Divide = (/)
+evalOp Power = (**)
 
 -- evaluate an expression
-evalExpression :: (Eq a, Fractional a) => Expression a -> Either EvaluationError a
+evalExpression :: (Eq a, Floating a) => Expression a -> Either EvaluationError a
 evalExpression (Value result) = Right result
 evalExpression (Expression left Divide right) = do
   rightResult <- evalExpression right

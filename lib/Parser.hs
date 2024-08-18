@@ -29,15 +29,16 @@ parseDigits tokens =
 
 -- precedence of an operator, high precedence operators must be evaluated before lower precedence operators
 precedence :: Op -> Int
+precedence Power = 2
 precedence Multiply = 1
 precedence Divide = 1
 precedence Add = 0
 precedence Subtract = 0
 
--- note all operators currently are left associative
--- e.g. 1 - 3 + 2 = (1 - 3) + 2, 4 / 3 / 2 = (4/3)/2
+-- if an operator is left associative, i.e. a op b op c = (a op b) op c
 isLeftAssociative :: Op -> Bool
-isLeftAssociative = const True
+isLeftAssociative Power = False
+isLeftAssociative _ = True
 
 -- apply all the operators to the expression stack, returning the new expression stack
 evaluateStacks :: [Expression a] -> [Op] -> Either ParseError [Expression a]

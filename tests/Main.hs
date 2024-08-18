@@ -10,7 +10,6 @@ import Test.Hspec
 import Test.QuickCheck
 import Data.Function (on)
 import Data.Foldable (toList)
-import Data.Decimal
 import Data.Word
 import FunctorUtils ( ($>) )
 
@@ -45,13 +44,13 @@ instance Arbitrary Op where
   arbitrary :: Gen Op
   arbitrary = elements [ Add, Subtract, Multiply, Divide ]
 
-instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
+instance (Arbitrary a, Eq a, Floating a) => Arbitrary (Expression a) where
   arbitrary :: Gen (Expression a)
   arbitrary = frequency [
     (1, Value <$> (arbitrary :: Gen a)),
     (1, Expression <$> (arbitrary :: Gen (Expression a)) <*> (arbitrary :: Gen Op) <*> (arbitrary :: Gen (Expression a)))]
 
-  shrink :: Fractional a => Expression a -> [Expression a]
+  shrink :: Expression a -> [Expression a]
   shrink (Value val) = map Value $ shrink val
   shrink expr@(Expression (Value leftVal) op (Value rightVal)) = toList $ Value <$> evalExpression expr
   shrink expr@(Expression leftExpr op rightVal@(Value _)) = [
@@ -84,11 +83,7 @@ instance (Arbitrary a, Eq a, Fractional a) => Arbitrary (Expression a) where
       shrunkLeft = shrink leftExpr
       shrunkRight = shrink rightExpr
 
-instance (Integral a) => Arbitrary (DecimalRaw a) where
-  arbitrary :: Gen (DecimalRaw a)
-  arbitrary = realFracToDecimal <$> (arbitrary :: Gen Word8) <*> (arbitrary :: Gen Double)
-
-prop_serializeroundtrip :: (Show a, Read a, Eq a, Fractional a) => Expression a -> Bool
+prop_serializeroundtrip :: (Show a, Read a, Eq a, Floating a) => Expression a -> Bool
 prop_serializeroundtrip expr = case readExpression $ serializeExpression expr of
   Left _ -> False
   Right readExpr -> ((==) `on` evalExpression) expr readExpr
@@ -101,5 +96,3 @@ main = hspec $ do
     it "Handles incorrectly formatted numbers" $ readExpression "1.0.0" `shouldBe` Left (InvalidExpression "Number was incorrectly formatted")
     
     it "Passes Property Test cases" $ property (prop_serializeroundtrip :: Expression Double -> Bool)
-
-    it "Can Process Decimals" $ property (prop_serializeroundtrip :: Expression Decimal -> Bool)

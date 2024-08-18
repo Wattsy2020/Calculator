@@ -8,5 +8,5 @@ import Parser ( readExpression )
 import Control.Monad ((<=<))
 
 -- parse and evaluate a string expression
-eval :: (Read a, Eq a, Fractional a) => String -> Either ParseError (Either EvaluationError a)
+eval :: (Read a, Eq a, Floating a) => String -> Either ParseError (Either EvaluationError a)
 eval = fmap evalExpression . readExpression

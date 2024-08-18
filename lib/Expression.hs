@@ -24,6 +24,7 @@ data Op
   | Multiply
   | Subtract
   | Divide
+  | Power
   deriving (Show, Eq)
 
 data Token
@@ -54,6 +55,7 @@ lexChar '+' = Right (Operator Add)
 lexChar '*' = Right (Operator Multiply)
 lexChar '-' = Right (Operator Subtract)
 lexChar '/' = Right (Operator Divide)
+lexChar '^' = Right (Operator Power)
 lexChar other = fmap Digit (readDigit' other)
 
 -- read string into tokens
@@ -66,6 +68,7 @@ serializeOp Add = "+"
 serializeOp Subtract = "-"
 serializeOp Multiply = "*"
 serializeOp Divide = "/"
+serializeOp Power = "^"
 
 serializeToken :: Token -> String
 serializeToken (Digit digit) = show digit
